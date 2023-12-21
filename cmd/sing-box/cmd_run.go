@@ -12,7 +12,8 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/sagernet/sing-box"
+	"github.com/ghodss/yaml"
+	box "github.com/sagernet/sing-box"
 	C "github.com/sagernet/sing-box/constant"
 	"github.com/sagernet/sing-box/log"
 	"github.com/sagernet/sing-box/option"
@@ -57,7 +58,9 @@ func readConfigAt(path string) (*OptionsEntry, error) {
 	if err != nil {
 		return nil, E.Cause(err, "read config at ", path)
 	}
-	options, err := json.UnmarshalExtended[option.Options](configContent)
+	// options, err := json.UnmarshalExtended[option.Options](configContent)
+	var options option.Options
+	err = yaml.Unmarshal(configContent, &options)
 	if err != nil {
 		return nil, E.Cause(err, "decode config at ", path)
 	}
