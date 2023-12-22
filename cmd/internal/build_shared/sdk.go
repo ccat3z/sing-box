@@ -24,6 +24,7 @@ func FindSDK() {
 		"$ANDROID_HOME",
 		"$HOME/Android/Sdk",
 		"$HOME/.local/lib/android/sdk",
+		"$HOME/.local/share/android-sdk",
 		"$HOME/Library/Android/sdk",
 	}
 	for _, path := range searchPath {
