@@ -6,12 +6,13 @@ import (
 	"net/netip"
 	"os"
 
-	"github.com/sagernet/sing-box"
+	"github.com/ghodss/yaml"
+	box "github.com/sagernet/sing-box"
 	"github.com/sagernet/sing-box/adapter"
 	"github.com/sagernet/sing-box/common/process"
 	"github.com/sagernet/sing-box/experimental/libbox/platform"
 	"github.com/sagernet/sing-box/option"
-	"github.com/sagernet/sing-tun"
+	tun "github.com/sagernet/sing-tun"
 	"github.com/sagernet/sing/common/control"
 	E "github.com/sagernet/sing/common/exceptions"
 	"github.com/sagernet/sing/common/json"
@@ -20,7 +21,9 @@ import (
 )
 
 func parseConfig(configContent string) (option.Options, error) {
-	options, err := json.UnmarshalExtended[option.Options]([]byte(configContent))
+	// options, err := json.UnmarshalExtended[option.Options]([]byte(configContent))
+	var options option.Options
+	err := yaml.Unmarshal([]byte(configContent), &options)
 	if err != nil {
 		return option.Options{}, E.Cause(err, "decode config")
 	}
