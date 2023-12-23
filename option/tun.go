@@ -26,6 +26,8 @@ type TunInboundOptions struct {
 	EndpointIndependentNat   bool                   `json:"endpoint_independent_nat,omitempty"`
 	UDPTimeout               UDPTimeoutCompat       `json:"udp_timeout,omitempty"`
 	Stack                    string                 `json:"stack,omitempty"`
+	Nebula                   string                 `json:"nebula,omitempty"`
+	DNSAddress               netip.Addr             `json:"dns_address,omitempty"`
 	Platform                 *TunPlatformOptions    `json:"platform,omitempty"`
 	InboundOptions
 }

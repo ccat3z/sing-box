@@ -5,7 +5,7 @@ import (
 	"net/netip"
 
 	"github.com/sagernet/sing-box/option"
-	"github.com/sagernet/sing-tun"
+	tun "github.com/sagernet/sing-tun"
 	"github.com/sagernet/sing/common"
 	E "github.com/sagernet/sing/common/exceptions"
 )
@@ -88,9 +88,15 @@ func (o *tunOptions) GetInet6Address() RoutePrefixIterator {
 }
 
 func (o *tunOptions) GetDNSServerAddress() (string, error) {
+	if o.DNSAddress.IsValid() {
+		return o.DNSAddress.String(), nil
+	}
+
 	if len(o.Inet4Address) == 0 || o.Inet4Address[0].Bits() == 32 {
 		return "", E.New("need one more IPv4 address for DNS hijacking")
 	}
+
+	// FIXME: Use next address may cause dns not work on routed tun
 	return o.Inet4Address[0].Addr().Next().String(), nil
 }
 

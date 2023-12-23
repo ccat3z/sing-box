@@ -13,7 +13,7 @@ import (
 	"github.com/sagernet/sing-box/experimental/libbox/platform"
 	"github.com/sagernet/sing-box/log"
 	"github.com/sagernet/sing-box/option"
-	"github.com/sagernet/sing-tun"
+	tun "github.com/sagernet/sing-tun"
 	"github.com/sagernet/sing/common"
 	E "github.com/sagernet/sing/common/exceptions"
 	M "github.com/sagernet/sing/common/metadata"
@@ -37,6 +37,7 @@ type Tun struct {
 	tunStack               tun.Stack
 	platformInterface      platform.Interface
 	platformOptions        option.TunPlatformOptions
+	nebulaOption           string
 }
 
 func NewTun(ctx context.Context, router adapter.Router, logger log.ContextLogger, tag string, options option.TunInboundOptions, platformInterface platform.Interface) (*Tun, error) {
@@ -93,12 +94,14 @@ func NewTun(ctx context.Context, router adapter.Router, logger log.ContextLogger
 			ExcludePackage:           options.ExcludePackage,
 			InterfaceMonitor:         router.InterfaceMonitor(),
 			TableIndex:               2022,
+			DNSAddress:               options.DNSAddress,
 		},
 		endpointIndependentNat: options.EndpointIndependentNat,
 		udpTimeout:             int64(udpTimeout.Seconds()),
 		stack:                  options.Stack,
 		platformInterface:      platformInterface,
 		platformOptions:        common.PtrValueOrDefault(options.Platform),
+		nebulaOption:           options.Nebula,
 	}, nil
 }
 
@@ -166,6 +169,17 @@ func (t *Tun) Start() error {
 	}
 	t.logger.Trace("creating stack")
 	t.tunIf = tunInterface
+
+	routedTuns := make([]tun.RouteTun, 0)
+	if t.stack == "routed" {
+		if len(t.nebulaOption) > 0 {
+			t, err := NewNebulaTun(t.ctx, t.logger, t.nebulaOption)
+			if err != nil {
+				return E.Cause(err, "failed to create nebula tun")
+			}
+			routedTuns = append(routedTuns, t)
+		}
+	}
 	t.tunStack, err = tun.NewStack(t.stack, tun.StackOptions{
 		Context:                t.ctx,
 		Tun:                    tunInterface,
@@ -176,6 +190,7 @@ func (t *Tun) Start() error {
 		Logger:                 t.logger,
 		ForwarderBindInterface: t.platformInterface != nil,
 		InterfaceFinder:        t.router.InterfaceFinder(),
+		RoutedTuns:             routedTuns,
 	})
 	if err != nil {
 		return err
