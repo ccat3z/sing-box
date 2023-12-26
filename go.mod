@@ -124,4 +124,4 @@ require (
 
 replace github.com/sagernet/sing-tun => github.com/ccat3z/sing-tun v0.0.0-20231223043100-ce8412e8eb2a
 
-replace github.com/slackhq/nebula => github.com/ccat3z/nebula v1.8.1-0.20231223132056-36fd19a1587e
+replace github.com/slackhq/nebula => github.com/ccat3z/nebula v1.8.1-0.20231226134254-78a0bb7e40be
