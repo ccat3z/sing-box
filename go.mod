@@ -122,6 +122,6 @@ require (
 	lukechampine.com/blake3 v1.2.1 // indirect
 )
 
-replace github.com/sagernet/sing-tun => github.com/ccat3z/sing-tun v0.0.0-20231223043100-ce8412e8eb2a
+replace github.com/sagernet/sing-tun => github.com/ccat3z/sing-tun v0.1.25-0.20231227132226-9da2e35c284a
 
-replace github.com/slackhq/nebula => github.com/ccat3z/nebula v1.8.1-0.20231226134254-78a0bb7e40be
+replace github.com/slackhq/nebula => github.com/ccat3z/nebula v1.8.1-0.20231227132051-253d744c0298

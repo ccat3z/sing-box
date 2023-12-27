@@ -31,6 +31,7 @@ type NebulaTun struct {
 	logger log.ContextLogger
 	ctl    *nebula.Control
 	prefix netip.Prefix
+	dev    *nebulaDevice
 	*io.PipeReader
 	*io.PipeWriter
 }
@@ -65,12 +66,19 @@ func NewNebulaTun(ctx context.Context, logger log.ContextLogger, config string) 
 		tun.prefix = prefix
 
 		dev := &nebulaDevice{
-			cidr:      tunCidr,
-			routeTree: ncidr.NewTree4[niputil.VpnIp](),
+			cidr: tunCidr,
 		}
+
+		routeTree, err := noverlay.MakeRouteTreeFromConfig(l, c, tunCidr)
+		if err != nil {
+			return nil, E.Cause(err, "parse route")
+		}
+		dev.routeTree = routeTree
+
 		tun.PipeReader, dev.PipeWriter = io.Pipe()
 		dev.PipeReader, tun.PipeWriter = io.Pipe()
 
+		tun.dev = dev
 		return dev, nil
 	})
 	if err != nil {
@@ -98,8 +106,16 @@ func (nt *NebulaTun) Close() error {
 	return nil
 }
 
-func (nt *NebulaTun) Prefix() netip.Prefix {
-	return nt.prefix
+func (nt *NebulaTun) Contains(addr netip.Addr) bool {
+	if nt.prefix.Contains(addr) {
+		return true
+	}
+
+	if ok, _ := nt.dev.routeTree.Contains(niputil.Ip2VpnIp(addr.AsSlice())); ok {
+		return true
+	}
+
+	return false
 }
 
 func (t *nebulaDevice) RouteFor(ip niputil.VpnIp) niputil.VpnIp {
