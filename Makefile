@@ -81,6 +81,9 @@ upload_android:
 	ghr --replace --draft --prerelease -p 3 "v${VERSION}" dist/release_android
 	rm -rf dist/release_android
 
+install_android: lib_android update_android_version
+	cd ../sing-box-for-android && ./gradlew :app:installOtherRelease
+
 release_android: lib_android update_android_version build_android upload_android
 
 publish_android:
