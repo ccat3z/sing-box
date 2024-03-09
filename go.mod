@@ -9,7 +9,7 @@ require (
 	github.com/cretz/bine v0.2.0
 	github.com/fsnotify/fsnotify v1.7.0
 	github.com/ghodss/yaml v1.0.0
-	github.com/go-chi/chi/v5 v5.0.11
+	github.com/go-chi/chi/v5 v5.0.12
 	github.com/go-chi/cors v1.2.1
 	github.com/go-chi/render v1.0.3
 	github.com/gofrs/uuid/v5 v5.0.0
@@ -18,23 +18,23 @@ require (
 	github.com/libdns/cloudflare v0.1.0
 	github.com/logrusorgru/aurora v2.0.3+incompatible
 	github.com/mholt/acmez v1.2.0
-	github.com/miekg/dns v1.1.57
+	github.com/miekg/dns v1.1.58
 	github.com/ooni/go-libtor v1.1.8
 	github.com/oschwald/maxminddb-golang v1.12.0
 	github.com/sagernet/bbolt v0.0.0-20231014093535-ea5cb2fe9f0a
 	github.com/sagernet/cloudflare-tls v0.0.0-20231208171750-a4483c1b7cd1
-	github.com/sagernet/gomobile v0.1.1
+	github.com/sagernet/gomobile v0.1.3
 	github.com/sagernet/gvisor v0.0.0-20231209105102-8d27a30e436e
-	github.com/sagernet/quic-go v0.40.1-beta.2
+	github.com/sagernet/quic-go v0.40.1
 	github.com/sagernet/reality v0.0.0-20230406110435-ee17307e7691
-	github.com/sagernet/sing v0.3.0
+	github.com/sagernet/sing v0.3.5
 	github.com/sagernet/sing-dns v0.1.12
 	github.com/sagernet/sing-mux v0.2.0
-	github.com/sagernet/sing-quic v0.1.7
+	github.com/sagernet/sing-quic v0.1.8
 	github.com/sagernet/sing-shadowsocks v0.2.6
 	github.com/sagernet/sing-shadowsocks2 v0.2.0
 	github.com/sagernet/sing-shadowtls v0.1.4
-	github.com/sagernet/sing-tun v0.2.0
+	github.com/sagernet/sing-tun v0.2.3
 	github.com/sagernet/sing-vmess v0.1.8
 	github.com/sagernet/smux v0.0.0-20231208180855-7041f6ea79e7
 	github.com/sagernet/tfo-go v0.0.0-20231209031829-7b5343ac1dc6
@@ -44,14 +44,14 @@ require (
 	github.com/sirupsen/logrus v1.9.3
 	github.com/slackhq/nebula v1.8.1
 	github.com/spf13/cobra v1.8.0
-	github.com/stretchr/testify v1.8.4
-	go.uber.org/zap v1.26.0
+	github.com/stretchr/testify v1.9.0
+	go.uber.org/zap v1.27.0
 	go4.org/netipx v0.0.0-20231129151722-fdeea329fbba
-	golang.org/x/crypto v0.18.0
-	golang.org/x/net v0.20.0
-	golang.org/x/sys v0.16.0
+	golang.org/x/crypto v0.20.0
+	golang.org/x/net v0.21.0
+	golang.org/x/sys v0.18.0
 	golang.zx2c4.com/wireguard/wgctrl v0.0.0-20230429144221-925a1e7659e6
-	google.golang.org/grpc v1.60.1
+	google.golang.org/grpc v1.62.0
 	google.golang.org/protobuf v1.32.0
 	howett.net/plist v1.0.1
 )
@@ -107,21 +107,21 @@ require (
 	github.com/wlynxg/anet v0.0.1 // indirect
 	github.com/zeebo/blake3 v0.2.3 // indirect
 	go.uber.org/multierr v1.11.0 // indirect
-	golang.org/x/exp v0.0.0-20240103183307-be819d1f06fc // indirect
+	golang.org/x/exp v0.0.0-20240119083558-1b970713d09a // indirect
 	golang.org/x/mod v0.14.0 // indirect
-	golang.org/x/term v0.16.0 // indirect
+	golang.org/x/term v0.17.0 // indirect
 	golang.org/x/text v0.14.0 // indirect
 	golang.org/x/time v0.5.0 // indirect
-	golang.org/x/tools v0.16.0 // indirect
+	golang.org/x/tools v0.17.0 // indirect
 	golang.zx2c4.com/wintun v0.0.0-20230126152724-0fa3db229ce2 // indirect
 	golang.zx2c4.com/wireguard v0.0.0-20230325221338-052af4a8072b // indirect
 	golang.zx2c4.com/wireguard/windows v0.5.3 // indirect
-	google.golang.org/genproto/googleapis/rpc v0.0.0-20231002182017-d307bd883b97 // indirect
+	google.golang.org/genproto/googleapis/rpc v0.0.0-20240123012728-ef4313101c80 // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 	lukechampine.com/blake3 v1.2.1 // indirect
 )
 
-replace github.com/sagernet/sing-tun => github.com/ccat3z/sing-tun v0.1.25-0.20231227132226-9da2e35c284a
+replace github.com/sagernet/sing-tun => github.com/ccat3z/sing-tun v0.2.4-0.20240309153008-fc8940d0d95e
 
 replace github.com/slackhq/nebula => github.com/ccat3z/nebula v1.8.3-0.20240120051332-03f23a802a07
