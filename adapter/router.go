@@ -71,6 +71,7 @@ func RouterFromContext(ctx context.Context) Router {
 
 type HeadlessRule interface {
 	Match(metadata *InboundContext) bool
+	String() string
 }
 
 type Rule interface {
@@ -79,18 +80,19 @@ type Rule interface {
 	Type() string
 	UpdateGeosite() error
 	Outbound() string
-	String() string
 }
 
 type DNSRule interface {
 	Rule
 	DisableCache() bool
 	RewriteTTL() *uint32
+	ClientSubnet() *netip.Prefix
+	WithAddressLimit() bool
+	MatchAddressLimit(metadata *InboundContext) bool
 }
 
 type RuleSet interface {
 	StartContext(ctx context.Context, startContext RuleSetStartContext) error
-	PostStart() error
 	Metadata() RuleSetMetadata
 	Close() error
 	HeadlessRule
@@ -99,6 +101,7 @@ type RuleSet interface {
 type RuleSetMetadata struct {
 	ContainsProcessRule bool
 	ContainsWIFIRule    bool
+	ContainsIPCIDRRule  bool
 }
 
 type RuleSetStartContext interface {

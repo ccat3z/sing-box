@@ -1,6 +1,11 @@
 ---
-icon: material/alert-decagram
+icon: material/new-box
 ---
+
+!!! quote "sing-box 1.9.0 中的更改"
+
+    :material-plus: [platform.http_proxy.bypass_domain](#platformhttp_proxybypass_domain)  
+    :material-plus: [platform.http_proxy.match_domain](#platformhttp_proxymatch_domain)  
 
 !!! quote "sing-box 1.8.0 中的更改"
 
@@ -73,7 +78,9 @@ icon: material/alert-decagram
     "http_proxy": {
       "enabled": false,
       "server": "127.0.0.1",
-      "server_port": 8080
+      "server_port": 8080,
+      "bypass_domain": [],
+      "match_domain": []
     }
   },
   
@@ -140,7 +147,7 @@ tun 接口的 IPv6 前缀。
 * 让不支持的网络无法到达
 * 将所有连接路由到 tun
 
-它可以防止地址泄漏，并使 DNS 劫持在 Android 上工作，但你的设备将无法其他设备被访问。
+它可以防止地址泄漏，并使 DNS 劫持在 Android 上工作。
 
 *在 Windows 中*:
 
@@ -256,6 +263,38 @@ TCP/IP 栈。
 #### platform.http_proxy
 
 系统 HTTP 代理设置。
+
+##### platform.http_proxy.enabled
+
+启用系统 HTTP 代理。
+
+##### platform.http_proxy.server
+
+==必填==
+
+系统 HTTP 代理服务器地址。
+
+##### platform.http_proxy.server_port
+
+==必填==
+
+系统 HTTP 代理服务器端口。
+
+##### platform.http_proxy.bypass_domain
+
+!!! note ""
+
+  在 Apple 平台，`bypass_domain` 项匹配主机名 **后缀**.
+
+绕过代理的主机名列表。
+
+##### platform.http_proxy.match_domain
+
+!!! quote ""
+
+    仅在 Apple 平台图形客户端中支持。
+
+代理的主机名列表。
 
 ### 监听字段
 

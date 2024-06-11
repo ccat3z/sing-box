@@ -3,12 +3,14 @@ package route
 import (
 	"context"
 	"os"
+	"strings"
 
 	"github.com/sagernet/sing-box/adapter"
 	"github.com/sagernet/sing-box/common/srs"
 	C "github.com/sagernet/sing-box/constant"
 	"github.com/sagernet/sing-box/option"
 	E "github.com/sagernet/sing/common/exceptions"
+	F "github.com/sagernet/sing/common/format"
 	"github.com/sagernet/sing/common/json"
 )
 
@@ -55,6 +57,7 @@ func NewLocalRuleSet(router adapter.Router, options option.RuleSet) (*LocalRuleS
 	var metadata adapter.RuleSetMetadata
 	metadata.ContainsProcessRule = hasHeadlessRule(plainRuleSet.Rules, isProcessHeadlessRule)
 	metadata.ContainsWIFIRule = hasHeadlessRule(plainRuleSet.Rules, isWIFIHeadlessRule)
+	metadata.ContainsIPCIDRRule = hasHeadlessRule(plainRuleSet.Rules, isIPCIDRHeadlessRule)
 	return &LocalRuleSet{rules, metadata}, nil
 }
 
@@ -67,11 +70,11 @@ func (s *LocalRuleSet) Match(metadata *adapter.InboundContext) bool {
 	return false
 }
 
-func (s *LocalRuleSet) StartContext(ctx context.Context, startContext adapter.RuleSetStartContext) error {
-	return nil
+func (s *LocalRuleSet) String() string {
+	return strings.Join(F.MapToString(s.rules), " ")
 }
 
-func (s *LocalRuleSet) PostStart() error {
+func (s *LocalRuleSet) StartContext(ctx context.Context, startContext adapter.RuleSetStartContext) error {
 	return nil
 }
 

@@ -7,6 +7,7 @@ import (
 	"net"
 	"net/http"
 	"runtime"
+	"strings"
 	"time"
 
 	"github.com/sagernet/sing-box/adapter"
@@ -14,6 +15,7 @@ import (
 	C "github.com/sagernet/sing-box/constant"
 	"github.com/sagernet/sing-box/option"
 	E "github.com/sagernet/sing/common/exceptions"
+	F "github.com/sagernet/sing/common/format"
 	"github.com/sagernet/sing/common/json"
 	"github.com/sagernet/sing/common/logger"
 	M "github.com/sagernet/sing/common/metadata"
@@ -68,6 +70,10 @@ func (s *RemoteRuleSet) Match(metadata *adapter.InboundContext) bool {
 	return false
 }
 
+func (s *RemoteRuleSet) String() string {
+	return strings.Join(F.MapToString(s.rules), " ")
+}
+
 func (s *RemoteRuleSet) StartContext(ctx context.Context, startContext adapter.RuleSetStartContext) error {
 	var dialer N.Dialer
 	if s.options.RemoteOptions.DownloadDetour != "" {
@@ -106,16 +112,6 @@ func (s *RemoteRuleSet) StartContext(ctx context.Context, startContext adapter.R
 	return nil
 }
 
-func (s *RemoteRuleSet) PostStart() error {
-	if s.lastUpdated.IsZero() {
-		err := s.fetchOnce(s.ctx, nil)
-		if err != nil {
-			s.logger.Error("fetch rule-set ", s.options.Tag, ": ", err)
-		}
-	}
-	return nil
-}
-
 func (s *RemoteRuleSet) Metadata() adapter.RuleSetMetadata {
 	return s.metadata
 }
@@ -150,6 +146,7 @@ func (s *RemoteRuleSet) loadBytes(content []byte) error {
 	}
 	s.metadata.ContainsProcessRule = hasHeadlessRule(plainRuleSet.Rules, isProcessHeadlessRule)
 	s.metadata.ContainsWIFIRule = hasHeadlessRule(plainRuleSet.Rules, isWIFIHeadlessRule)
+	s.metadata.ContainsIPCIDRRule = hasHeadlessRule(plainRuleSet.Rules, isIPCIDRHeadlessRule)
 	s.rules = rules
 	return nil
 }

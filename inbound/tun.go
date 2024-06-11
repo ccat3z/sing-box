@@ -180,6 +180,16 @@ func (t *Tun) Start() error {
 			routedTuns = append(routedTuns, t)
 		}
 	}
+
+	var (
+		forwarderBindInterface bool
+		includeAllNetworks     bool
+	)
+	if t.platformInterface != nil {
+		forwarderBindInterface = true
+		includeAllNetworks = t.platformInterface.IncludeAllNetworks()
+	}
+
 	t.tunStack, err = tun.NewStack(t.stack, tun.StackOptions{
 		Context:                t.ctx,
 		Tun:                    tunInterface,
@@ -188,9 +198,10 @@ func (t *Tun) Start() error {
 		UDPTimeout:             t.udpTimeout,
 		Handler:                t,
 		Logger:                 t.logger,
-		ForwarderBindInterface: t.platformInterface != nil,
+		ForwarderBindInterface: forwarderBindInterface,
 		InterfaceFinder:        t.router.InterfaceFinder(),
 		RoutedTuns:             routedTuns,
+		IncludeAllNetworks:     includeAllNetworks,
 	})
 	if err != nil {
 		return err

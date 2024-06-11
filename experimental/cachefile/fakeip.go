@@ -74,6 +74,7 @@ func (c *CacheFile) FakeIPStore(address netip.Addr, domain string) error {
 		if err != nil {
 			return err
 		}
+		oldDomain := bucket.Get(address.AsSlice())
 		err = bucket.Put(address.AsSlice(), []byte(domain))
 		if err != nil {
 			return err
@@ -86,39 +87,51 @@ func (c *CacheFile) FakeIPStore(address netip.Addr, domain string) error {
 		if err != nil {
 			return err
 		}
+		if oldDomain != nil {
+			if err := bucket.Delete(oldDomain); err != nil {
+				return err
+			}
+		}
 		return bucket.Put([]byte(domain), address.AsSlice())
 	})
 }
 
 func (c *CacheFile) FakeIPStoreAsync(address netip.Addr, domain string, logger logger.Logger) {
-	c.saveAccess.Lock()
+	c.saveFakeIPAccess.Lock()
+	if oldDomain, loaded := c.saveDomain[address]; loaded {
+		if address.Is4() {
+			delete(c.saveAddress4, oldDomain)
+		} else {
+			delete(c.saveAddress6, oldDomain)
+		}
+	}
 	c.saveDomain[address] = domain
 	if address.Is4() {
 		c.saveAddress4[domain] = address
 	} else {
 		c.saveAddress6[domain] = address
 	}
-	c.saveAccess.Unlock()
+	c.saveFakeIPAccess.Unlock()
 	go func() {
 		err := c.FakeIPStore(address, domain)
 		if err != nil {
-			logger.Warn("save FakeIP address pair: ", err)
+			logger.Warn("save FakeIP cache: ", err)
 		}
-		c.saveAccess.Lock()
+		c.saveFakeIPAccess.Lock()
 		delete(c.saveDomain, address)
 		if address.Is4() {
 			delete(c.saveAddress4, domain)
 		} else {
 			delete(c.saveAddress6, domain)
 		}
-		c.saveAccess.Unlock()
+		c.saveFakeIPAccess.Unlock()
 	}()
 }
 
 func (c *CacheFile) FakeIPLoad(address netip.Addr) (string, bool) {
-	c.saveAccess.RLock()
+	c.saveFakeIPAccess.RLock()
 	cachedDomain, cached := c.saveDomain[address]
-	c.saveAccess.RUnlock()
+	c.saveFakeIPAccess.RUnlock()
 	if cached {
 		return cachedDomain, true
 	}
@@ -139,13 +152,13 @@ func (c *CacheFile) FakeIPLoadDomain(domain string, isIPv6 bool) (netip.Addr, bo
 		cachedAddress netip.Addr
 		cached        bool
 	)
-	c.saveAccess.RLock()
+	c.saveFakeIPAccess.RLock()
 	if !isIPv6 {
 		cachedAddress, cached = c.saveAddress4[domain]
 	} else {
 		cachedAddress, cached = c.saveAddress6[domain]
 	}
-	c.saveAccess.RUnlock()
+	c.saveFakeIPAccess.RUnlock()
 	if cached {
 		return cachedAddress, true
 	}
