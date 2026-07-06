@@ -25,6 +25,7 @@ const (
 	TypeTUIC         = "tuic"
 	TypeHysteria2    = "hysteria2"
 	TypeTailscale    = "tailscale"
+	TypeNebula       = "nebula"
 	TypeDERP         = "derp"
 	TypeResolved     = "resolved"
 	TypeSSMAPI       = "ssm-api"
@@ -88,6 +89,8 @@ func ProxyDisplayName(proxyType string) string {
 		return "AnyTLS"
 	case TypeTailscale:
 		return "Tailscale"
+	case TypeNebula:
+		return "Nebula"
 	case TypeSelector:
 		return "Selector"
 	case TypeURLTest:
