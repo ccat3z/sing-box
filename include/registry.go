@@ -101,6 +101,8 @@ func OutboundRegistry() *outbound.Registry {
 	vless.RegisterOutbound(registry)
 	anytls.RegisterOutbound(registry)
 
+	registerNebulaOutbound(registry)
+
 	registerQUICOutbounds(registry)
 	registerStubForRemovedOutbounds(registry)
 
