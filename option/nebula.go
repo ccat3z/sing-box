@@ -15,7 +15,6 @@ type NebulaOutboundOptions struct {
 	CA            string              `json:"ca"`
 	StaticHostMap map[string][]string `json:"static_host_map,omitempty"`
 	Lighthouse    NebulaLighthouse    `json:"lighthouse,omitempty"`
-	Punchy        *NebulaPunchy       `json:"punchy,omitempty"`
 	Relay         *NebulaRelay        `json:"relay,omitempty"`
 	MTU           uint32              `json:"mtu,omitempty"`
 	DialerOptions
@@ -25,11 +24,6 @@ type NebulaOutboundOptions struct {
 type NebulaLighthouse struct {
 	Hosts       []string `json:"hosts,omitempty"`
 	AmLighthouse bool    `json:"am_lighthouse,omitempty"`
-}
-
-// NebulaPunchy mirrors nebula's punchy block (NAT hole-punching).
-type NebulaPunchy struct {
-	Punch bool `json:"punch"`
 }
 
 // NebulaRelay mirrors nebula's relay block.

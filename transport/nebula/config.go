@@ -36,14 +36,10 @@ func buildConfig(opts option.NebulaOutboundOptions) (*config.C, error) {
 	}
 	c.Settings["lighthouse"] = lighthouse
 
-	// punchy defaults to on (matches nebula's recommended config and the test
-	// topology), enabling NAT traversal for host-to-host routing.
-	punch := true
-	if opts.Punchy != nil {
-		punch = opts.Punchy.Punch
-	}
+	// punchy is always on: NAT hole-punching is required for host-to-host
+	// routing (lighthouse discovery, relay, roaming).
 	c.Settings["punchy"] = map[interface{}]interface{}{
-		"punch": punch,
+		"punch": true,
 	}
 
 	if opts.Relay != nil {
