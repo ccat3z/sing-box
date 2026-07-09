@@ -1,15 +1,11 @@
 package option
 
-import (
-	"net/netip"
-)
-
 // NebulaOutboundOptions configures a nebula [github.com/slackhq/nebula] tunnel as
 // an outbound. The field names mirror nebula's own configuration keys
 // (static_host_map, lighthouse, punchy, relay) so that an existing nebula YAML
-// maps over directly.
+// maps over directly. The overlay address (VPN IP + mask) is not configured
+// here — it is derived from the node certificate by nebula itself.
 type NebulaOutboundOptions struct {
-	LocalAddress  netip.Prefix        `json:"local_address"`
 	PrivateKey    string              `json:"private_key"`
 	Certificate   string              `json:"certificate"`
 	CA            string              `json:"ca"`
