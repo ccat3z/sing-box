@@ -92,9 +92,14 @@ func New(ctx context.Context, opts option.NebulaOutboundOptions) (*Endpoint, err
 		return nebulaudp.NewPacketConnConn(l, pc), nil
 	})
 
-	// Inside (TUN) device: our queue-backed safeDevice.
-	dev := newSafeDevice(opts.LocalAddress)
+	// Inside (TUN) device: our queue-backed safeDevice. nebula.Main derives the
+	// overlay CIDR from the node certificate (main.go: certificate.Details.Ips[0])
+	// and passes it to the device factory as tunCidr, so we build safeDevice from
+	// that — the overlay address has a single source of truth (the cert) rather
+	// than a redundant local_address field that can drift out of sync with it.
+	var dev *safeDevice
 	deviceFactory := overlay.DeviceFactory(func(c *config.C, l *logrus.Logger, tunCidr netip.Prefix, routines int) (overlay.Device, error) {
+		dev = newSafeDevice(tunCidr)
 		return dev, nil
 	})
 
@@ -102,6 +107,11 @@ func New(ctx context.Context, opts option.NebulaOutboundOptions) (*Endpoint, err
 	if err != nil {
 		return nil, fmt.Errorf("nebula Main: %w", err)
 	}
+	// nebula.Main has invoked the factory by now, so dev is populated.
+	if dev == nil {
+		return nil, fmt.Errorf("nebula Main did not create the tunnel device")
+	}
+	devCidr := dev.cidr
 
 	mtu := uint32(defaultMTU)
 	if opts.MTU != 0 {
@@ -131,7 +141,7 @@ func New(ctx context.Context, opts option.NebulaOutboundOptions) (*Endpoint, err
 	ipv4Subnet, _ := tcpip.NewSubnet(tcpip.AddrFrom4([4]byte{0, 0, 0, 0}), tcpip.MaskFrom(strings.Repeat("\x00", 4)))
 	ipstack.SetRouteTable([]tcpip.Route{{Destination: ipv4Subnet, NIC: nicID}})
 
-	localIP := opts.LocalAddress.Addr()
+	localIP := devCidr.Addr()
 	protoAddr := tcpip.ProtocolAddress{
 		AddressWithPrefix: tcpip.AddrFromSlice(localIP.AsSlice()).WithPrefix(),
 		Protocol:          ipv4.ProtocolNumber,
