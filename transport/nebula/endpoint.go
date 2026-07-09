@@ -42,6 +42,11 @@ const defaultMTU = 1300
 // userspace gvisor netstack, exposing DialContext/ListenPacket over the overlay.
 // It is the sing-box transport; protocol/nebula wraps it in an adapter.Outbound.
 type Endpoint struct {
+	opts        option.NebulaOutboundOptions
+	cfg         *config.C
+	logger      *logrus.Logger
+	outerDialer N.Dialer
+
 	ctrl    *nebula.Control
 	device  *safeDevice
 	ipstack *stack.Stack
@@ -49,9 +54,16 @@ type Endpoint struct {
 
 	mtu      uint32
 	localIP  netip.Addr
+	started  atomicStart
 	closed   atomicClose
 	closeCtx context.Context
 	closeFn  context.CancelFunc
+}
+
+type atomicStart struct {
+	once sync.Once
+	err  error
+	done bool
 }
 
 type atomicClose struct {
@@ -59,7 +71,12 @@ type atomicClose struct {
 	closed bool
 }
 
-// New constructs the endpoint. The nebula tunnel is NOT started until Start().
+// New constructs the endpoint WITHOUT binding any sockets. nebula.Main binds the
+// outer UDP socket (via the device/udp factories) inside it, and that must run
+// in Start() — not here — because on Android the dialer's interface-selection
+// strategy (NetworkStrategyDefault) needs the VPN default interface to be
+// detected first, which only happens after early startup. Constructing here used
+// to race the interface monitor and fail with "no available network interface".
 func New(ctx context.Context, opts option.NebulaOutboundOptions) (*Endpoint, error) {
 	cfg, err := buildConfig(opts)
 	if err != nil {
@@ -70,20 +87,52 @@ func New(ctx context.Context, opts option.NebulaOutboundOptions) (*Endpoint, err
 	logger.SetOutput(os.Stderr)
 
 	// Outer-transport dialer: sing-box's N.Dialer, honoring DialerOptions
-	// (bind_interface, detour, routing_mark, domain resolver, …). This produces
-	// the UDP socket nebula talks to peers over.
+	// (bind_interface, detour, routing_mark, domain resolver, …). Constructing the
+	// dialer does not open a socket — it only resolves bind/strategy config. The
+	// actual UDP listen happens later, from Start().
 	outerDialer, err := dialer.New(ctx, opts.DialerOptions, false)
 	if err != nil {
 		return nil, fmt.Errorf("create dialer: %w", err)
 	}
 
+	mtu := uint32(defaultMTU)
+	if opts.MTU != 0 {
+		mtu = opts.MTU
+	}
+
+	closeCtx, closeFn := context.WithCancel(ctx)
+	return &Endpoint{
+		opts:        opts,
+		cfg:         cfg,
+		logger:      logger,
+		outerDialer: outerDialer,
+		mtu:         mtu,
+		closeCtx:    closeCtx,
+		closeFn:     closeFn,
+	}, nil
+}
+
+// Start builds and launches the nebula tunnel plus the packet pumps between
+// nebula and the gvisor netstack. The outer UDP socket is bound here (inside
+// nebula.Main), once the network stack is up. It is non-blocking.
+func (e *Endpoint) Start() error {
+	e.started.once.Do(func() {
+		e.started.err = e.start()
+		if e.started.err == nil {
+			e.started.done = true
+		}
+	})
+	return e.started.err
+}
+
+func (e *Endpoint) start() error {
 	// UDP factory (nebula.UDPConnFactory seam): an unconnected socket so nebula
 	// can receive from / send to arbitrary peer addresses (lighthouse discovery,
 	// punchy, roaming). Nebula owns routines==1, so exactly one conn is produced.
 	udpFactory := nebula.UDPConnFactory(func(l *logrus.Logger, listenHost netip.Addr, port int, multi bool, batch int) (nebulaudp.Conn, error) {
 		// Ignore nebula's listenHost/port: the dialer (DialerOptions) decides the
 		// bind address. An unspecified destination yields a wildcard listen socket.
-		pc, err := outerDialer.ListenPacket(ctx, M.Socksaddr{Addr: netip.IPv4Unspecified()})
+		pc, err := e.outerDialer.ListenPacket(e.closeCtx, M.Socksaddr{Addr: netip.IPv4Unspecified()})
 		if err != nil {
 			return nil, fmt.Errorf("nebula outbound UDP listen: %w", err)
 		}
@@ -103,19 +152,13 @@ func New(ctx context.Context, opts option.NebulaOutboundOptions) (*Endpoint, err
 		return dev, nil
 	})
 
-	ctrl, err := nebula.Main(cfg, false, "sing-box", logger, deviceFactory, udpFactory)
+	ctrl, err := nebula.Main(e.cfg, false, "sing-box", e.logger, deviceFactory, udpFactory)
 	if err != nil {
-		return nil, fmt.Errorf("nebula Main: %w", err)
+		return fmt.Errorf("nebula Main: %w", err)
 	}
 	// nebula.Main has invoked the factory by now, so dev is populated.
 	if dev == nil {
-		return nil, fmt.Errorf("nebula Main did not create the tunnel device")
-	}
-	devCidr := dev.cidr
-
-	mtu := uint32(defaultMTU)
-	if opts.MTU != 0 {
-		mtu = opts.MTU
+		return fmt.Errorf("nebula Main did not create the tunnel device")
 	}
 
 	// Userspace netstack, mirroring nebula's service/service.go. Note: in this
@@ -131,17 +174,17 @@ func New(ctx context.Context, opts option.NebulaOutboundOptions) (*Endpoint, err
 	})
 	sack := tcpip.TCPSACKEnabled(true)
 	if tcpErr := ipstack.SetTransportProtocolOption(tcp.ProtocolNumber, &sack); tcpErr != nil {
-		return nil, fmt.Errorf("enable TCP SACK: %v", tcpErr)
+		return fmt.Errorf("enable TCP SACK: %v", tcpErr)
 	}
-	linkEP := channel.New(512, mtu, "")
+	linkEP := channel.New(512, e.mtu, "")
 	if err := ipstack.CreateNIC(nicID, linkEP); err != nil {
-		return nil, fmt.Errorf("create NIC: %v", err)
+		return fmt.Errorf("create NIC: %v", err)
 	}
 	// Default route: everything egresses through the single NIC.
 	ipv4Subnet, _ := tcpip.NewSubnet(tcpip.AddrFrom4([4]byte{0, 0, 0, 0}), tcpip.MaskFrom(strings.Repeat("\x00", 4)))
 	ipstack.SetRouteTable([]tcpip.Route{{Destination: ipv4Subnet, NIC: nicID}})
 
-	localIP := devCidr.Addr()
+	localIP := dev.cidr.Addr()
 	protoAddr := tcpip.ProtocolAddress{
 		AddressWithPrefix: tcpip.AddrFromSlice(localIP.AsSlice()).WithPrefix(),
 		Protocol:          ipv4.ProtocolNumber,
@@ -150,26 +193,16 @@ func New(ctx context.Context, opts option.NebulaOutboundOptions) (*Endpoint, err
 		protoAddr.Protocol = ipv6.ProtocolNumber
 	}
 	if err := ipstack.AddProtocolAddress(nicID, protoAddr, stack.AddressProperties{}); err != nil {
-		return nil, fmt.Errorf("add protocol address: %v", err)
+		return fmt.Errorf("add protocol address: %v", err)
 	}
 
-	closeCtx, closeFn := context.WithCancel(ctx)
-	return &Endpoint{
-		ctrl:     ctrl,
-		device:   dev,
-		ipstack:  ipstack,
-		linkEP:   linkEP,
-		mtu:      mtu,
-		localIP:  localIP,
-		closeCtx: closeCtx,
-		closeFn:  closeFn,
-	}, nil
-}
+	e.ctrl = ctrl
+	e.device = dev
+	e.ipstack = ipstack
+	e.linkEP = linkEP
+	e.localIP = localIP
 
-// Start launches the nebula tunnel and the packet pumps between nebula and the
-// gvisor netstack. It is non-blocking.
-func (e *Endpoint) Start() error {
-	e.ctrl.Start()
+	ctrl.Start()
 
 	// Pump A: tunnel → netstack. Packets nebula decrypted (device.Write) are
 	// injected into gvisor as inbound.
@@ -248,13 +281,15 @@ func (e *Endpoint) ListenPacket(ctx context.Context, destination M.Socksaddr) (n
 
 // Close stops the nebula tunnel first (so its listenIn loop sees the device
 // close cleanly — avoiding nebula's os.Exit(2) on fatal read errors), then
-// tears down the netstack.
+// tears down the netstack. Safe to call if Start() was never called or failed.
 func (e *Endpoint) Close() error {
 	e.closed.once.Do(func() {
 		e.closed.closed = true
-		e.ctrl.Stop()   // closes the device → Read returns os.ErrClosed, listenIn exits
-		e.closeFn()     // unblocks the netstack→tunnel pump's ReadContext
-		e.ipstack.Close()
+		e.closeFn() // unblock the netstack→tunnel pump's ReadContext
+		if e.started.done {
+			e.ctrl.Stop()   // closes the device → Read returns os.ErrClosed, listenIn exits
+			e.ipstack.Close()
+		}
 	})
 	return nil
 }
