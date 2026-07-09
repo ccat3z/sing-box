@@ -14,9 +14,9 @@ func buildConfig(opts option.NebulaOutboundOptions) (*config.C, error) {
 	c := config.NewC(logrus.New())
 
 	c.Settings["pki"] = map[interface{}]interface{}{
-		"ca":   opts.CA,
-		"cert": opts.Certificate,
-		"key":  opts.PrivateKey,
+		"ca":   opts.PKI.CA,
+		"cert": opts.PKI.Cert,
+		"key":  opts.PKI.Key,
 	}
 
 	// static_host_map: { "10.35.99.1": ["host:port", ...] }

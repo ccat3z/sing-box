@@ -6,14 +6,20 @@ package option
 // maps over directly. The overlay address (VPN IP + mask) is not configured
 // here — it is derived from the node certificate by nebula itself.
 type NebulaOutboundOptions struct {
-	PrivateKey    string              `json:"private_key"`
-	Certificate   string              `json:"certificate"`
-	CA            string              `json:"ca"`
+	PKI           NebulaPKI           `json:"pki"`
 	StaticHostMap map[string][]string `json:"static_host_map,omitempty"`
 	Lighthouse    NebulaLighthouse    `json:"lighthouse,omitempty"`
 	Relay         *NebulaRelay        `json:"relay,omitempty"`
 	MTU           uint32              `json:"mtu,omitempty"`
 	DialerOptions
+}
+
+// NebulaPKI mirrors nebula's pki block (ca / cert / key). The cert embeds the
+// node's overlay address, which nebula derives the tunnel CIDR from.
+type NebulaPKI struct {
+	CA   string `json:"ca"`
+	Cert string `json:"cert"`
+	Key  string `json:"key"`
 }
 
 // NebulaLighthouse mirrors nebula's lighthouse.hosts / lighthouse.am_lighthouse keys.
