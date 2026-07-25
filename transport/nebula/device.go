@@ -7,6 +7,7 @@ import (
 	"sync"
 
 	"github.com/slackhq/nebula/overlay"
+	"github.com/slackhq/nebula/routing"
 )
 
 // safeDevice is an overlay.Device that nebula reads from and writes to, backed by
@@ -132,9 +133,15 @@ func (d *safeDevice) Close() error {
 
 // Remaining overlay.Device methods.
 func (d *safeDevice) Activate() error                   { return nil }
-func (d *safeDevice) Cidr() netip.Prefix                { return d.cidr }
 func (d *safeDevice) Name() string                      { return "faketun0" }
-func (d *safeDevice) RouteFor(ip netip.Addr) netip.Addr { return ip }
+func (d *safeDevice) Networks() []netip.Prefix          { return []netip.Prefix{d.cidr} }
+func (d *safeDevice) SupportsMultiqueue() bool          { return false }
+
+// RoutesFor mirrors overlay.UserDevice: every address is reachable directly
+// over the single overlay NIC (gateway = the address itself, default route).
+func (d *safeDevice) RoutesFor(ip netip.Addr) routing.Gateways {
+	return routing.Gateways{routing.NewGateway(ip, 1)}
+}
 
 // NewMultiQueueReader returns the device itself. Only invoked when routines > 1,
 // which we do not use (routines is fixed at 1), so this path is effectively

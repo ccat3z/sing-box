@@ -1,7 +1,8 @@
 package nebula
 
 import (
-	"github.com/sirupsen/logrus"
+	"log/slog"
+
 	"github.com/slackhq/nebula/config"
 
 	"github.com/sagernet/sing-box/option"
@@ -10,19 +11,25 @@ import (
 // buildConfig translates the sing-box option struct into nebula's config.C,
 // populating the public Settings map directly (no YAML round-trip). The keys
 // mirror a standard nebula config.yaml, so any existing nebula config maps over.
-func buildConfig(opts option.NebulaOutboundOptions) (*config.C, error) {
-	c := config.NewC(logrus.New())
+//
+// NOTE: nebula v1.11.0's config.Get traverses Settings expecting map[string]any
+// (it type-asserts to map[string]any at each path segment). The older
+// map[interface{}]interface{} form (viper/YAML style, accepted by v1.9.5) now
+// silently fails the assertion and reads back as unset — so all nested maps
+// here must be map[string]any.
+func buildConfig(opts option.NebulaOutboundOptions, logger *slog.Logger) (*config.C, error) {
+	c := config.NewC(logger)
 
-	c.Settings["pki"] = map[interface{}]interface{}{
+	c.Settings["pki"] = map[string]any{
 		"ca":   opts.PKI.CA,
 		"cert": opts.PKI.Cert,
 		"key":  opts.PKI.Key,
 	}
 
 	// static_host_map: { "10.35.99.1": ["host:port", ...] }
-	staticHostMap := map[interface{}]interface{}{}
+	staticHostMap := map[string]any{}
 	for vpnIP, endpoints := range opts.StaticHostMap {
-		ifaceEndpoints := make([]interface{}, len(endpoints))
+		ifaceEndpoints := make([]any, len(endpoints))
 		for i, ep := range endpoints {
 			ifaceEndpoints[i] = ep
 		}
@@ -30,20 +37,20 @@ func buildConfig(opts option.NebulaOutboundOptions) (*config.C, error) {
 	}
 	c.Settings["static_host_map"] = staticHostMap
 
-	lighthouse := map[interface{}]interface{}{
-		"hosts":        toStringSlice(opts.Lighthouse.Hosts),
+	lighthouse := map[string]any{
+		"hosts":         toStringSlice(opts.Lighthouse.Hosts),
 		"am_lighthouse": opts.Lighthouse.AmLighthouse,
 	}
 	c.Settings["lighthouse"] = lighthouse
 
 	// punchy is always on: NAT hole-punching is required for host-to-host
 	// routing (lighthouse discovery, relay, roaming).
-	c.Settings["punchy"] = map[interface{}]interface{}{
+	c.Settings["punchy"] = map[string]any{
 		"punch": true,
 	}
 
 	if opts.Relay != nil {
-		c.Settings["relay"] = map[interface{}]interface{}{
+		c.Settings["relay"] = map[string]any{
 			"use_relays": opts.Relay.UseRelays,
 			"relays":     toStringSlice(opts.Relay.Relays),
 			"am_relay":   opts.Relay.AmRelay,
@@ -52,18 +59,18 @@ func buildConfig(opts option.NebulaOutboundOptions) (*config.C, error) {
 
 	// Allow-all firewall: the test topology and the desired use case (reach any
 	// overlay peer's services) don't need nebula-side filtering.
-	c.Settings["firewall"] = map[interface{}]interface{}{
-		"outbound": []interface{}{
-			map[interface{}]interface{}{"port": "any", "proto": "any", "host": "any"},
+	c.Settings["firewall"] = map[string]any{
+		"outbound": []any{
+			map[string]any{"port": "any", "proto": "any", "host": "any"},
 		},
-		"inbound": []interface{}{
-			map[interface{}]interface{}{"port": "any", "proto": "any", "host": "any"},
+		"inbound": []any{
+			map[string]any{"port": "any", "proto": "any", "host": "any"},
 		},
 	}
 
 	// A (unused) tun device name; our custom overlay.Device ignores it but nebula
 	// expects the key to exist in some code paths.
-	c.Settings["tun"] = map[interface{}]interface{}{"dev": "faketun0"}
+	c.Settings["tun"] = map[string]any{"dev": "faketun0"}
 
 	// Single-queue: our device is not multiqueue.
 	c.Settings["routines"] = 1
@@ -71,8 +78,8 @@ func buildConfig(opts option.NebulaOutboundOptions) (*config.C, error) {
 	return c, nil
 }
 
-func toStringSlice(in []string) []interface{} {
-	out := make([]interface{}, len(in))
+func toStringSlice(in []string) []any {
+	out := make([]any, len(in))
 	for i, s := range in {
 		out[i] = s
 	}

@@ -4,13 +4,12 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"log/slog"
 	"net"
 	"net/netip"
-	"os"
 	"strings"
 	"sync"
 
-	"github.com/sirupsen/logrus"
 	"github.com/slackhq/nebula"
 	"github.com/slackhq/nebula/config"
 	"github.com/slackhq/nebula/overlay"
@@ -28,6 +27,7 @@ import (
 	"gvisor.dev/gvisor/pkg/tcpip/transport/udp"
 
 	"github.com/sagernet/sing-box/common/dialer"
+	"github.com/sagernet/sing-box/log"
 	"github.com/sagernet/sing-box/option"
 	M "github.com/sagernet/sing/common/metadata"
 	N "github.com/sagernet/sing/common/network"
@@ -44,7 +44,7 @@ const defaultMTU = 1300
 type Endpoint struct {
 	opts        option.NebulaOutboundOptions
 	cfg         *config.C
-	logger      *logrus.Logger
+	logger      *slog.Logger
 	outerDialer N.Dialer
 
 	ctrl    *nebula.Control
@@ -78,13 +78,15 @@ type atomicClose struct {
 // detected first, which only happens after early startup. Constructing here used
 // to race the interface monitor and fail with "no available network interface".
 func New(ctx context.Context, opts option.NebulaOutboundOptions) (*Endpoint, error) {
-	cfg, err := buildConfig(opts)
+	// nebula v1.11.0 uses log/slog; bridge its records into sing-box's log
+	// package (→ logcat on Android). Built before buildConfig so config-parse
+	// logs are also captured.
+	logger := slog.New(&nebulaLogBridge{})
+
+	cfg, err := buildConfig(opts, logger)
 	if err != nil {
 		return nil, err
 	}
-
-	logger := logrus.New()
-	logger.SetOutput(os.Stderr)
 
 	// Outer-transport dialer: sing-box's N.Dialer, honoring DialerOptions
 	// (bind_interface, detour, routing_mark, domain resolver, …). Constructing the
@@ -129,7 +131,7 @@ func (e *Endpoint) start() error {
 	// UDP factory (nebula.UDPConnFactory seam): an unconnected socket so nebula
 	// can receive from / send to arbitrary peer addresses (lighthouse discovery,
 	// punchy, roaming). Nebula owns routines==1, so exactly one conn is produced.
-	udpFactory := nebula.UDPConnFactory(func(l *logrus.Logger, listenHost netip.Addr, port int, multi bool, batch int) (nebulaudp.Conn, error) {
+	udpFactory := nebula.UDPConnFactory(func(l *slog.Logger, listenHost netip.Addr, port int, multi bool, batch int) (nebulaudp.Conn, error) {
 		// Ignore nebula's listenHost/port: the dialer (DialerOptions) decides the
 		// bind address. An unspecified destination yields a wildcard listen socket.
 		pc, err := e.outerDialer.ListenPacket(e.closeCtx, M.Socksaddr{Addr: netip.IPv4Unspecified()})
@@ -142,13 +144,15 @@ func (e *Endpoint) start() error {
 	})
 
 	// Inside (TUN) device: our queue-backed safeDevice. nebula.Main derives the
-	// overlay CIDR from the node certificate (main.go: certificate.Details.Ips[0])
-	// and passes it to the device factory as tunCidr, so we build safeDevice from
-	// that — the overlay address has a single source of truth (the cert) rather
-	// than a redundant local_address field that can drift out of sync with it.
+	// overlay networks from the node certificate and passes them as vpnNetworks;
+	// we build safeDevice from the first one — the overlay address has a single
+	// source of truth (the cert) rather than a redundant local_address field.
 	var dev *safeDevice
-	deviceFactory := overlay.DeviceFactory(func(c *config.C, l *logrus.Logger, tunCidr netip.Prefix, routines int) (overlay.Device, error) {
-		dev = newSafeDevice(tunCidr)
+	deviceFactory := overlay.DeviceFactory(func(c *config.C, l *slog.Logger, vpnNetworks []netip.Prefix, routines int) (overlay.Device, error) {
+		if len(vpnNetworks) == 0 {
+			return nil, fmt.Errorf("nebula Main passed no overlay networks")
+		}
+		dev = newSafeDevice(vpnNetworks[0])
 		return dev, nil
 	})
 
@@ -285,13 +289,73 @@ func (e *Endpoint) ListenPacket(ctx context.Context, destination M.Socksaddr) (n
 func (e *Endpoint) Close() error {
 	e.closed.once.Do(func() {
 		e.closed.closed = true
-		e.closeFn() // unblock the netstack→tunnel pump's ReadContext
+		e.closeFn()
 		if e.started.done {
-			e.ctrl.Stop()   // closes the device → Read returns os.ErrClosed, listenIn exits
+			e.ctrl.Stop()
 			e.ipstack.Close()
 		}
 	})
 	return nil
+}
+
+// nebulaLogBridge is a slog.Handler that forwards nebula's structured logs
+// (v1.11.0 migrated from logrus to log/slog) into sing-box's log package, which
+// mirrors to logcat on Android. Each record is dispatched by level; the message
+// is prefixed with "nebula: " so it's identifiable in the merged stream.
+type nebulaLogBridge struct {
+	attrs  []slog.Attr
+	groups []string
+}
+
+func (h *nebulaLogBridge) Enabled(_ context.Context, level slog.Level) bool {
+	return level >= slog.LevelDebug
+}
+
+func (h *nebulaLogBridge) Handle(_ context.Context, r slog.Record) error {
+	var msg strings.Builder
+	msg.WriteString("nebula: ")
+	msg.WriteString(r.Message)
+	// Append attrs (record-level + handler-level) as key=value for context.
+	appendAttrs := func(attrs []slog.Attr) {
+		for _, a := range attrs {
+			if a.Equal(slog.Attr{}) {
+				continue
+			}
+			msg.WriteByte(' ')
+			msg.WriteString(a.Key)
+			msg.WriteByte('=')
+			msg.WriteString(a.Value.String())
+		}
+	}
+	appendAttrs(h.attrs)
+	r.Attrs(func(a slog.Attr) bool {
+		appendAttrs([]slog.Attr{a})
+		return true
+	})
+
+	switch {
+	case r.Level >= slog.LevelError:
+		log.Error(msg.String())
+	case r.Level >= slog.LevelWarn:
+		log.Warn(msg.String())
+	case r.Level >= slog.LevelInfo:
+		log.Info(msg.String())
+	default:
+		log.Debug(msg.String())
+	}
+	return nil
+}
+
+func (h *nebulaLogBridge) WithAttrs(attrs []slog.Attr) slog.Handler {
+	nh := *h
+	nh.attrs = append(append([]slog.Attr(nil), h.attrs...), attrs...)
+	return &nh
+}
+
+func (h *nebulaLogBridge) WithGroup(name string) slog.Handler {
+	nh := *h
+	nh.groups = append(append([]string(nil), h.groups...), name)
+	return &nh
 }
 
 func protocolNumber(addr netip.Addr) tcpip.NetworkProtocolNumber {
