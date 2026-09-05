@@ -126,6 +126,12 @@ func mergeOptionsList(optionsList []*OptionsEntry) (option.Options, error) {
 	if err != nil {
 		return option.Options{}, E.Cause(err, "unmarshal merged config")
 	}
+	sort.SliceStable(mergedOptions.Route.Rules, func(i, j int) bool {
+		return mergedOptions.Route.Rules[i].Priority < mergedOptions.Route.Rules[j].Priority
+	})
+	sort.SliceStable(mergedOptions.DNS.Rules, func(i, j int) bool {
+		return mergedOptions.DNS.Rules[i].Priority < mergedOptions.DNS.Rules[j].Priority
+	})
 	return mergedOptions, nil
 }
 
