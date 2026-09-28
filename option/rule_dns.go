@@ -17,6 +17,7 @@ type _DNSRule struct {
 	Type           string         `json:"type,omitempty" enum:"default,logical"`
 	DefaultOptions DefaultDNSRule `json:"-"`
 	LogicalOptions LogicalDNSRule `json:"-"`
+	Priority       int            `json:"priority,omitempty"`
 }
 
 type DNSRule _DNSRule

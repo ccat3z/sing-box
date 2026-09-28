@@ -17,6 +17,7 @@ type _Rule struct {
 	Type           string      `json:"type,omitempty" enum:"default,logical"`
 	DefaultOptions DefaultRule `json:"-"`
 	LogicalOptions LogicalRule `json:"-"`
+	Priority       int         `json:"priority,omitempty"`
 }
 
 type Rule _Rule
@@ -90,6 +91,7 @@ func (r Rule) DescribeSchema(builder schema.Builder) (*schema.Node, error) {
 func ruleUnion(builder schema.Builder, matchType reflect.Type, nestedRef *schema.Node, actionRef *schema.Node) (*schema.Node, error) {
 	defaultMatch := schema.LooseObject()
 	defaultMatch.Properties.Put("type", schema.StringEnum(C.RuleTypeDefault, ""))
+	defaultMatch.Properties.Put("priority", schema.IntegerNode())
 	err := builder.FlattenStruct(defaultMatch, matchType)
 	if err != nil {
 		return nil, err
@@ -102,6 +104,7 @@ func ruleUnion(builder schema.Builder, matchType reflect.Type, nestedRef *schema
 
 	logicalMatch := schema.LooseObject()
 	logicalMatch.Properties.Put("type", schema.StringConst(C.RuleTypeLogical))
+	logicalMatch.Properties.Put("priority", schema.IntegerNode())
 	logicalProperties(logicalMatch, nestedRef)
 	logicalMatch.Required = []string{"type", "mode", "rules"}
 	logicalVariant := &schema.Node{
@@ -239,6 +242,8 @@ func rulePayloadWithoutType(ctx context.Context, data []byte) ([]byte, error) {
 		return nil, err
 	}
 	content.Remove("type")
+	// priority is parsed into _Rule and is not a match field or action.
+	content.Remove("priority")
 	return content.MarshalJSONContext(ctx)
 }
 
