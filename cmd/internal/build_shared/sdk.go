@@ -3,6 +3,7 @@ package build_shared
 import (
 	"go/build"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"sort"
@@ -92,15 +93,19 @@ func findNDK() bool {
 var GoBinPath string
 
 func FindMobile() {
-	goBin := filepath.Join(build.Default.GOPATH, "bin")
+	binName := "gobind"
 	if runtime.GOOS == "windows" {
-		if !rw.IsFile(filepath.Join(goBin, "gobind.exe")) {
-			log.Fatal("missing gomobile installation")
-		}
-	} else {
-		if !rw.IsFile(filepath.Join(goBin, "gobind")) {
-			log.Fatal("missing gomobile installation")
-		}
+		binName = "gobind.exe"
+	}
+	// Prefer a gomobile/gobind found on $PATH (e.g. provided by the system /
+	// nix-shell) over the one in $GOPATH/bin.
+	if pathBin, err := exec.LookPath(binName); err == nil {
+		GoBinPath = filepath.Dir(pathBin)
+		return
+	}
+	goBin := filepath.Join(build.Default.GOPATH, "bin")
+	if !rw.IsFile(filepath.Join(goBin, binName)) {
+		log.Fatal("missing gomobile installation")
 	}
 	GoBinPath = goBin
 }
