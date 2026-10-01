@@ -42,6 +42,14 @@ func (o *Outbound) Close() error {
 	return o.endpoint.Close()
 }
 
+// InterfaceUpdated restarts the tunnel on network changes. ResetNetwork's
+// ConnectionManager.CloseAll closes the tracked outer UDP socket, and nebula
+// never re-binds it by itself — without this, any default-interface switch
+// (wifi ↔ cellular) permanently kills the tunnel.
+func (o *Outbound) InterfaceUpdated(ctx context.Context) {
+	o.endpoint.Restart()
+}
+
 func (o *Outbound) DialContext(ctx context.Context, network string, destination M.Socksaddr) (net.Conn, error) {
 	return o.endpoint.DialContext(ctx, network, destination)
 }

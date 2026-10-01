@@ -46,6 +46,7 @@ type Endpoint struct {
 	cfg         *config.C
 	logger      *slog.Logger
 	outerDialer N.Dialer
+	ctx         context.Context
 
 	ctrl    *nebula.Control
 	device  *safeDevice
@@ -58,6 +59,11 @@ type Endpoint struct {
 	closed   atomicClose
 	closeCtx context.Context
 	closeFn  context.CancelFunc
+
+	// restartAccess serializes tunnel teardown/rebuild between Restart()'s
+	// goroutine and Close(), and naturally coalesces interface-flap bursts
+	// (each ResetNetwork round spawns a goroutine; they queue on this lock).
+	restartAccess sync.Mutex
 }
 
 type atomicStart struct {
@@ -104,6 +110,7 @@ func New(ctx context.Context, opts option.NebulaOutboundOptions) (*Endpoint, err
 
 	closeCtx, closeFn := context.WithCancel(ctx)
 	return &Endpoint{
+		ctx:         ctx,
 		opts:        opts,
 		cfg:         cfg,
 		logger:      logger,
@@ -128,6 +135,13 @@ func (e *Endpoint) Start() error {
 }
 
 func (e *Endpoint) start() error {
+	// Fresh per-run cancellation: the outer UDP socket, both packet pumps and
+	// the udpFactory dial all hang off closeCtx. On restart the old context is
+	// cancelled before start(); a new one must replace it or the next tunnel
+	// dies instantly. Base it on the original context, NOT the old closeCtx.
+	closeCtx, closeFn := context.WithCancel(e.ctx)
+	e.closeCtx = closeCtx
+	e.closeFn = closeFn
 	// UDP factory (nebula.UDPConnFactory seam): an unconnected socket so nebula
 	// can receive from / send to arbitrary peer addresses (lighthouse discovery,
 	// punchy, roaming). Nebula owns routines==1, so exactly one conn is produced.
@@ -290,12 +304,45 @@ func (e *Endpoint) Close() error {
 	e.closed.once.Do(func() {
 		e.closed.closed = true
 		e.closeFn()
+		e.restartAccess.Lock()
+		defer e.restartAccess.Unlock()
 		if e.started.done {
 			e.ctrl.Stop()
 			e.ipstack.Close()
 		}
 	})
 	return nil
+}
+
+// Restart tears the tunnel down and brings it back up with a fresh outer UDP
+// socket, so it binds through the new default interface. Called by the
+// outbound's InterfaceUpdated: ResetNetwork closes the tracked outer UDP
+// socket (ConnectionManager.CloseAll) and nebula never re-binds it on its own.
+//
+// Async (never blocks ResetNetwork's callback chain); restartAccess both
+// serializes concurrent restarts and coalesces flaps into extra (harmless,
+// idempotent) stop/start rounds.
+func (e *Endpoint) Restart() {
+	if e.closed.closed || !e.started.done {
+		return
+	}
+	go func() {
+		e.restartAccess.Lock()
+		defer e.restartAccess.Unlock()
+		if e.closed.closed || !e.started.done {
+			return
+		}
+		// stop: see Close for the ordering rationale (ctrl.Stop drains
+		// nebula's readers before the netstack goes away).
+		e.closeFn()
+		e.ctrl.Stop()
+		e.ipstack.Close()
+		if err := e.start(); err != nil {
+			log.Error("nebula: restart failed: ", err)
+			return
+		}
+		log.Info("nebula: tunnel restarted on interface change")
+	}()
 }
 
 // nebulaLogBridge is a slog.Handler that forwards nebula's structured logs
