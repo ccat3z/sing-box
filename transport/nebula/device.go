@@ -1,11 +1,14 @@
 package nebula
 
 import (
+	"fmt"
 	"io"
+	"log/slog"
 	"net/netip"
 	"os"
 	"sync"
 
+	"github.com/gaissmai/bart"
 	"github.com/slackhq/nebula/overlay"
 	"github.com/slackhq/nebula/routing"
 )
@@ -28,6 +31,15 @@ import (
 type safeDevice struct {
 	cidr netip.Prefix
 
+	// routeTree holds the unsafe_routes lookup (nil when none are configured).
+	// Built once before the device reaches nebula and read-only afterwards, so
+	// no locking — the real tun uses an atomic pointer only because it supports
+	// live config reload, which rebuilds this whole device instead.
+	routeTree *bart.Table[routing.Gateways]
+	// hasRoutes distinguishes "no unsafe_routes configured" from "configured but
+	// no match", which RoutesFor treats differently.
+	hasRoutes bool
+
 	// outbound: host→tunnel packets, drained by Read() (nebula's listenIn),
 	// filled by writeOutbound() (our gvisor egress pump).
 	outbound struct {
@@ -49,11 +61,20 @@ type safeDevice struct {
 	closeOnce sync.Once
 }
 
-func newSafeDevice(cidr netip.Prefix) *safeDevice {
-	d := &safeDevice{cidr: cidr}
+func newSafeDevice(cidr netip.Prefix, logger *slog.Logger, routes []overlay.Route) (*safeDevice, error) {
+	d := &safeDevice{cidr: cidr, hasRoutes: len(routes) > 0}
+	if len(routes) > 0 {
+		// allowMTU=false: per-route MTU only applies to OS route installation,
+		// which this userspace device never does (MakeRouteTree warns if set).
+		tree, err := overlay.MakeRouteTree(logger, routes, false)
+		if err != nil {
+			return nil, fmt.Errorf("build unsafe route tree: %w", err)
+		}
+		d.routeTree = tree
+	}
 	d.outbound.cond = sync.NewCond(&d.outbound.Mutex)
 	d.inbound.cond = sync.NewCond(&d.inbound.Mutex)
-	return d
+	return d, nil
 }
 
 // Read implements overlay.Device.Read: deliver one host→tunnel packet to nebula.
@@ -137,9 +158,23 @@ func (d *safeDevice) Name() string                      { return "faketun0" }
 func (d *safeDevice) Networks() []netip.Prefix          { return []netip.Prefix{d.cidr} }
 func (d *safeDevice) SupportsMultiqueue() bool          { return false }
 
-// RoutesFor mirrors overlay.UserDevice: every address is reachable directly
-// over the single overlay NIC (gateway = the address itself, default route).
+// RoutesFor resolves unsafe-route destinations to their via gateways. nebula
+// only consults it for destinations OUTSIDE the overlay network (inside.go
+// handles overlay destinations via the host map first). With unsafe_routes
+// configured, a miss returns nil so nebula drops the packet immediately —
+// native semantics, failing fast on a typo'd route. Without unsafe_routes the
+// device keeps the legacy answer (gateway = the address itself, mirroring
+// overlay.UserDevice's every-address-on-NIC behavior), which overlay
+// destinations never see anyway.
 func (d *safeDevice) RoutesFor(ip netip.Addr) routing.Gateways {
+	if d.routeTree != nil {
+		if gateways, ok := d.routeTree.Lookup(ip); ok && len(gateways) > 0 {
+			return gateways
+		}
+	}
+	if d.hasRoutes {
+		return nil
+	}
 	return routing.Gateways{routing.NewGateway(ip, 1)}
 }
 

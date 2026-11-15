@@ -161,12 +161,22 @@ func (e *Endpoint) start() error {
 	// overlay networks from the node certificate and passes them as vpnNetworks;
 	// we build safeDevice from the first one — the overlay address has a single
 	// source of truth (the cert) rather than a redundant local_address field.
+	// unsafe_routes are parsed here with nebula's own parser (validation and
+	// error messages identical to native nebula); the native TUN constructors
+	// would do this, but they are bypassed by this factory.
 	var dev *safeDevice
 	deviceFactory := overlay.DeviceFactory(func(c *config.C, l *slog.Logger, vpnNetworks []netip.Prefix, routines int) (overlay.Device, error) {
 		if len(vpnNetworks) == 0 {
 			return nil, fmt.Errorf("nebula Main passed no overlay networks")
 		}
-		dev = newSafeDevice(vpnNetworks[0])
+		routes, err := overlay.ParseUnsafeRoutes(c, vpnNetworks)
+		if err != nil {
+			return nil, fmt.Errorf("parse tun.unsafe_routes: %w", err)
+		}
+		dev, err = newSafeDevice(vpnNetworks[0], l, routes)
+		if err != nil {
+			return nil, err
+		}
 		return dev, nil
 	})
 
