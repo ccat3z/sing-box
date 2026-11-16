@@ -52,8 +52,8 @@ github.com/caddyserver/certmagic v0.25.3-0.20260421143802-60d9d8b415d6 h1:LYSB6V
 github.com/caddyserver/certmagic v0.25.3-0.20260421143802-60d9d8b415d6/go.mod h1:llW/CvsNmza8S6hmsuggsZeiX+uS27dkqY27wDIuBWg=
 github.com/caddyserver/zerossl v0.1.5 h1:dkvOjBAEEtY6LIGAHei7sw2UgqSD6TrWweXpV7lvEvE=
 github.com/caddyserver/zerossl v0.1.5/go.mod h1:CxA0acn7oEGO6//4rtrRjYgEoa4MFw/XofZnrYwGqG4=
-github.com/ccat3z/nebula v1.8.3-0.20260929010753-e7475033c18c h1:iLVRKAujn2KGf2fEoKAXij4YsrHp0epKcf+Vac22dns=
-github.com/ccat3z/nebula v1.8.3-0.20260929010753-e7475033c18c/go.mod h1:upPxcwDl4elo4xsd+2X2Qq/b88UiUy6oH7bDi3ScCDs=
+github.com/ccat3z/nebula v1.8.3-0.20261115223154-24f694a09e53 h1:Akp4tUtRIeBKa3jruFxJNobxI0IYuwETuPJQVvOMt/Q=
+github.com/ccat3z/nebula v1.8.3-0.20261115223154-24f694a09e53/go.mod h1:upPxcwDl4elo4xsd+2X2Qq/b88UiUy6oH7bDi3ScCDs=
 github.com/cenkalti/backoff/v4 v4.3.0 h1:MyRJ/UdXutAwSAT+s3wNd7MfTIcy71VQueUuFK343L8=
 github.com/cenkalti/backoff/v4 v4.3.0/go.mod h1:Y3VNntkOUPxTVeUxJ/G5vcM//AlwfmyYozVcomhLiZE=
 github.com/census-instrumentation/opencensus-proto v0.2.1/go.mod h1:f6KPmirojxKA12rnyqOA5BBL4O983OfeGPqjHWSTneU=

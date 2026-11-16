@@ -223,4 +223,4 @@ require (
 	zombiezen.com/go/capnproto2 v2.18.2+incompatible // indirect
 )
 
-replace github.com/slackhq/nebula => github.com/ccat3z/nebula v1.8.3-0.20260929010753-e7475033c18c
+replace github.com/slackhq/nebula => github.com/ccat3z/nebula v1.8.3-0.20261115223154-24f694a09e53
