@@ -21,6 +21,13 @@ const (
 	defaultSafetyMargin              = 5 * 1024 * 1024
 	defaultAvailableTriggerMarginMin = 32 * 1024 * 1024
 	defaultAvailableTriggerMarginMax = 128 * 1024 * 1024
+	// defaultResetCooldown bounds how often the network may be reset while the
+	// process stays above the trigger threshold. On iOS the post-reset
+	// phys_footprint (Go heap + stacks + the native extension baseline, ~37MB
+	// of a 50MB limit) never drops below the resume threshold, so the state
+	// machine stays in pressureStateTriggered forever — without a cooldown
+	// re-trigger, a later spike above the threshold can never fire again.
+	defaultResetCooldown = time.Minute
 )
 
 type pressureState uint8
@@ -111,6 +118,7 @@ type adaptiveTimer struct {
 	state                   pressureState
 	currentInterval         time.Duration
 	forceMinInterval        bool
+	lastResetAt             time.Time
 	pendingPressureBaseline bool
 	pressureBaseline        memorySample
 	pressureBaselineTime    time.Time
@@ -179,6 +187,16 @@ func (t *adaptiveTimer) poll() {
 	}
 	t.timer.Reset(t.intervalForState())
 	triggered = previousState != pressureStateTriggered && t.state == pressureStateTriggered
+	// Re-trigger: still at/above the trigger threshold after a reset, with the
+	// cooldown elapsed (see defaultResetCooldown). The state machine itself
+	// can't release here because usage never falls below the resume threshold
+	// on this platform.
+	if !triggered && t.state == pressureStateTriggered &&
+		t.policyMode == policyModeNetworkExtension &&
+		sample.usage >= t.limitThresholds.trigger &&
+		!t.lastResetAt.IsZero() && time.Since(t.lastResetAt) > defaultResetCooldown {
+		triggered = true
+	}
 	if !triggered && !t.pressureBaselineTime.IsZero() && t.memoryLimit > 0 &&
 		sample.usage > t.pressureBaseline.usage && sample.usage < t.memoryLimit {
 		elapsed := time.Since(t.pressureBaselineTime)
@@ -229,6 +247,9 @@ func (t *adaptiveTimer) poll() {
 	}
 	badCleanup()
 	runtimeDebug.FreeOSMemory()
+	t.access.Lock()
+	t.lastResetAt = time.Now()
+	t.access.Unlock()
 	if t.recorder != nil {
 		t.recorder.recordReset(reason, sample, readMemorySample(t.policyMode), connections, t.killerDisabled)
 		t.recorder.snapshot(SnapshotReasonReset, sample, false)

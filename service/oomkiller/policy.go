@@ -13,6 +13,13 @@ import (
 const (
 	DefaultAppleNetworkExtensionMemoryLimit = 50 * 1024 * 1024
 	DefaultAppleNetworkExtensionGCPercent   = 50
+	// DefaultAppleNetworkExtensionGoMemoryLimit is the Go soft memory limit
+	// (runtime/debug.SetMemoryLimit) paired with the 50MB jetsam budget. The
+	// old 4/5-of-limit value (40MB) sat above the observed steady-state
+	// footprint (~37-42MB), so the GC never tightened; 32MB keeps the heap
+	// goal below the baseline while leaving ~8MB of GC headroom above the
+	// ~24MB live set (heap + stacks + runtime).
+	DefaultAppleNetworkExtensionGoMemoryLimit = 32 * 1024 * 1024
 )
 
 type policyMode uint8
