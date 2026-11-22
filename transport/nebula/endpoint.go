@@ -9,6 +9,7 @@ import (
 	"net/netip"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/slackhq/nebula"
 	"github.com/slackhq/nebula/config"
@@ -232,11 +233,17 @@ func (e *Endpoint) start() error {
 
 	ctrl.Start()
 
+	// Pumps capture their generation's device/linkEP/closeCtx as locals: they
+	// must never follow the Endpoint fields across a Restart, or the old pump
+	// migrates onto the new generation instead of exiting (observed as leaked
+	// pump goroutines accumulating one per restart).
+	device, linkEP, closeCtx := e.device, e.linkEP, e.closeCtx
+
 	// Pump A: tunnel → netstack. Packets nebula decrypted (device.Write) are
 	// injected into gvisor as inbound.
 	go func() {
 		for {
-			pkt, ok := e.device.nextInbound()
+			pkt, ok := device.nextInbound()
 			if !ok {
 				return
 			}
@@ -254,10 +261,10 @@ func (e *Endpoint) start() error {
 			pb := stack.NewPacketBuffer(stack.PacketBufferOptions{
 				Payload: buffer.MakeWithData(bytes.Clone(pkt)),
 			})
-			e.linkEP.InjectInbound(netProto, pb)
+			linkEP.InjectInbound(netProto, pb)
 			pb.DecRef()
 
-			if err := e.closeCtx.Err(); err != nil {
+			if err := closeCtx.Err(); err != nil {
 				return
 			}
 		}
@@ -267,16 +274,16 @@ func (e *Endpoint) start() error {
 	// written into nebula for encryption + UDP transmission.
 	go func() {
 		for {
-			pkt := e.linkEP.ReadContext(e.closeCtx)
+			pkt := linkEP.ReadContext(closeCtx)
 			if pkt == nil {
-				if err := e.closeCtx.Err(); err != nil {
+				if err := closeCtx.Err(); err != nil {
 					return
 				}
 				continue
 			}
 			view := pkt.ToView()
 			data := view.AsSlice()
-			e.device.writeOutbound(data)
+			device.writeOutbound(data)
 			view.Release()
 		}
 	}()
@@ -332,6 +339,12 @@ func (e *Endpoint) Close() error {
 // Async (never blocks ResetNetwork's callback chain); restartAccess both
 // serializes concurrent restarts and coalesces flaps into extra (harmless,
 // idempotent) stop/start rounds.
+//
+// start() can fail transiently — typically the outer UDP bind racing an
+// interface switch. The old generation is already torn down at that point, so
+// giving up leaves the tunnel dead forever (iOS: "nebula unreachable until
+// manual restart"). Retrying with backoff until it comes up (or Close() ends
+// the endpoint) is the only safe move.
 func (e *Endpoint) Restart() {
 	if e.closed.closed || !e.started.done {
 		return
@@ -339,19 +352,40 @@ func (e *Endpoint) Restart() {
 	go func() {
 		e.restartAccess.Lock()
 		defer e.restartAccess.Unlock()
-		if e.closed.closed || !e.started.done {
-			return
+		delay := time.Millisecond * 500
+		for attempt := 1; ; attempt++ {
+			if e.closed.closed || !e.started.done {
+				return
+			}
+			// stop: see Close for the ordering rationale (ctrl.Stop drains
+			// nebula's readers before the netstack goes away). After a failed
+			// start() the fields still name the previous (already stopped)
+			// generation; teardown is idempotent, so just run it again.
+			e.closeFn()
+			e.ctrl.Stop()
+			e.ipstack.Close()
+			err := e.start()
+			if err == nil {
+				if attempt > 1 {
+					log.Info("nebula: tunnel restarted after ", attempt, " attempts")
+				} else {
+					log.Info("nebula: tunnel restarted on interface change")
+				}
+				return
+			}
+			log.Error("nebula: restart attempt ", attempt, " failed: ", err, "; retrying in ", delay)
+			timer := time.NewTimer(delay)
+			delay *= 2
+			if delay > time.Second*30 {
+				delay = time.Second * 30
+			}
+			select {
+			case <-timer.C:
+			case <-e.ctx.Done():
+				timer.Stop()
+				return
+			}
 		}
-		// stop: see Close for the ordering rationale (ctrl.Stop drains
-		// nebula's readers before the netstack goes away).
-		e.closeFn()
-		e.ctrl.Stop()
-		e.ipstack.Close()
-		if err := e.start(); err != nil {
-			log.Error("nebula: restart failed: ", err)
-			return
-		}
-		log.Info("nebula: tunnel restarted on interface change")
 	}()
 }
 
